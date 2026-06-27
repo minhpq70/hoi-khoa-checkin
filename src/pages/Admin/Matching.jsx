@@ -126,9 +126,25 @@ export default function Matching({ onFinalized }) {
   }
 
   async function resetExisting() {
-    if (!window.confirm('XOÁ toàn bộ phòng đã chốt (logical_room + room_member)? Chỉ làm khi muốn ghép lại từ đầu.'))
+    if (
+      !window.confirm(
+        'XOÁ toàn bộ phòng đã chốt (logical_room + room_member)? Phòng vật lý đang gán sẽ được trả về "trống". Chỉ làm khi muốn ghép lại từ đầu.',
+      )
+    )
       return
     setBusy(true)
+    setMsg(null)
+    // 1. gỡ liên kết phòng vật lý (FK) + trả về pool available, nếu không sẽ vướng FK khi xoá
+    const { error: e0 } = await supabase
+      .from('physical_room')
+      .update({ logical_room_id: null, status: 'available' })
+      .not('logical_room_id', 'is', null)
+    if (e0) {
+      setBusy(false)
+      setMsg({ kind: 'error', text: 'Lỗi gỡ phòng vật lý: ' + e0.message })
+      return
+    }
+    // 2. xoá logical_room (room_member tự cascade)
     const { error } = await supabase.from('logical_room').delete().neq('id', '00000000-0000-0000-0000-000000000000')
     setBusy(false)
     if (error) setMsg({ kind: 'error', text: 'Lỗi xoá: ' + error.message })

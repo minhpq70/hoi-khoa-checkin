@@ -38,7 +38,7 @@ create table if not exists physical_room (
   status          text not null default 'not_ready'
                     check (status in ('not_ready','available','occupied')),
   available_at    timestamptz,
-  logical_room_id uuid references logical_room(id)
+  logical_room_id uuid references logical_room(id) on delete set null
 );
 
 -- 2. RLS ---------------------------------------------------
