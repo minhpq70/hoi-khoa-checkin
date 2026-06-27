@@ -106,3 +106,62 @@ export async function exportRoomsXlsx(rooms) {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+// === Phase 2: lễ tân import danh sách phòng vật lý từ Excel ===
+
+// Tải file mẫu: chỉ 2 cột Số phòng + Loại phòng (Double/Twin).
+export function roomsTemplateXlsx() {
+  const data = [
+    { 'Số phòng': '301', 'Loại phòng': 'Double' },
+    { 'Số phòng': '302', 'Loại phòng': 'Twin' },
+  ]
+  const ws = XLSX.utils.json_to_sheet(data)
+  ws['!cols'] = [{ wch: 12 }, { wch: 14 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Phòng')
+  XLSX.writeFile(wb, 'mau-nhap-phong.xlsx')
+}
+
+function normalizeRoomType(s) {
+  const n = norm(s)
+  if (n.includes('double')) return 'double'
+  if (n.includes('twin')) return 'twin'
+  return null
+}
+
+// Đọc file phòng -> { valid:[{room_number, type}], errors:[{row, error}] }.
+export async function readRoomsExcel(file) {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type: 'array' })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  const rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' })
+  const headers = rows.length ? Object.keys(rows[0]) : []
+  const numCol = headers.find((h) => ['so phong', 'phong', 'room'].some((k) => norm(h).includes(k)))
+  const typeCol = headers.find((h) => ['loai', 'type'].some((k) => norm(h).includes(k)))
+
+  const valid = []
+  const errors = []
+  rows.forEach((r, i) => {
+    const room_number = (r[numCol] ?? '').toString().trim()
+    const type = normalizeRoomType(r[typeCol])
+    if (!room_number) errors.push({ row: i + 2, error: 'thiếu số phòng' })
+    else if (!type) errors.push({ row: i + 2, error: 'loại phòng phải là Double hoặc Twin' })
+    else valid.push({ room_number, type })
+  })
+  return { valid, errors }
+}
+
+// === Phase 2: xuất danh sách khách theo phòng (mỗi người 1 dòng) ===
+// rows: [{ name, class, room_number }]  -> 2 dòng cho 1 phòng đôi.
+export function exportGuestListXlsx(rows) {
+  const data = rows.map((r) => ({
+    'Họ và tên': r.name,
+    Lớp: r.class || '',
+    'Số phòng': r.room_number,
+  }))
+  const ws = XLSX.utils.json_to_sheet(data)
+  ws['!cols'] = [{ wch: 26 }, { wch: 12 }, { wch: 12 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Danh sách khách')
+  XLSX.writeFile(wb, 'danh-sach-khach-phong.xlsx')
+}
