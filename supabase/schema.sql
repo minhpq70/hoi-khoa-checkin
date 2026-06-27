@@ -141,13 +141,32 @@ end; $$;
 grant execute on function check_in          to anon;
 grant execute on function add_available_room to authenticated;
 
--- 5. Seed data mẫu ----------------------------------------
+-- 5. Realtime ----------------------------------------------
+-- Cho client subscribe thay đổi (màn check-in chờ phòng, dashboard lễ tân).
+-- Bọc trong DO để chạy lại không lỗi "already member".
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table logical_room;
+  exception when duplicate_object then null;
+  end;
+  begin
+    alter publication supabase_realtime add table physical_room;
+  exception when duplicate_object then null;
+  end;
+end $$;
 
-insert into registrant (full_name, class, companion_name) values
+-- 6. Seed data mẫu ----------------------------------------
+
+-- registrant không có unique constraint -> 'on conflict' không chặn trùng.
+-- Chỉ seed khi bảng đang rỗng để chạy lại nhiều lần không nhân bản dữ liệu.
+insert into registrant (full_name, class, companion_name)
+select * from (values
   ('Nguyễn Văn An', 'K10A', 'Trần Thị Bình'),
   ('Trần Thị Bình', 'K10A', 'Nguyễn Văn An'),
   ('Lê Văn Cường', 'K10B', null),
   ('Phạm Thị Dung', 'K10B', null),
   ('Hoàng Văn Em', 'K10C', null),
   ('Vũ Thị Phương', 'K10C', null)
-on conflict do nothing;
+) as v(full_name, class, companion_name)
+where not exists (select 1 from registrant);
