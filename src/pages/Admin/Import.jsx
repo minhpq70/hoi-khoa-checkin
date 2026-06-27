@@ -142,6 +142,59 @@ export default function Import({ onImported }) {
           </Button>
         </div>
       )}
+
+      <DangerZone />
     </div>
+  )
+}
+
+// Xoá trắng toàn bộ dữ liệu (không đụng tài khoản đăng nhập) — để reset trước khi nhập chuẩn.
+function DangerZone() {
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
+
+  async function wipe() {
+    const ans = window.prompt(
+      'XOÁ TRẮNG toàn bộ dữ liệu: danh sách đăng ký, ghép phòng và phòng vật lý.\n' +
+        'Tài khoản đăng nhập KHÔNG bị ảnh hưởng. Không thể hoàn tác.\n\n' +
+        'Gõ XOA để xác nhận:',
+    )
+    if (ans !== 'XOA') return
+    setBusy(true)
+    setMsg(null)
+    try {
+      let e
+      ;({ error: e } = await supabase.from('physical_room').delete().gte('id', 0))
+      if (e) throw e
+      // xoá logical_room sẽ cascade room_member
+      ;({ error: e } = await supabase.from('logical_room').delete().neq('id', '00000000-0000-0000-0000-000000000000'))
+      if (e) throw e
+      ;({ error: e } = await supabase.from('registrant').delete().neq('id', '00000000-0000-0000-0000-000000000000'))
+      if (e) throw e
+      localStorage.removeItem('checkin.matching.draft')
+      setMsg({ kind: 'success', text: 'Đã xoá trắng toàn bộ dữ liệu. Có thể nhập dữ liệu mới từ đầu.' })
+    } catch (err) {
+      setMsg({ kind: 'error', text: 'Lỗi xoá: ' + err.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card style={{ borderColor: '#fecaca', background: '#fef2f2', marginTop: 8 }}>
+      <h3 style={{ color: colors.red, marginBottom: 8 }}>⚠ Khu vực nguy hiểm</h3>
+      <p style={{ fontSize: 13, color: colors.gray, marginBottom: 12 }}>
+        Xoá sạch dữ liệu (đăng ký, ghép phòng, phòng vật lý) để nhập lại từ đầu cho chuẩn. Tài khoản đăng nhập vẫn giữ
+        nguyên.
+      </p>
+      <Button variant="danger" disabled={busy} onClick={wipe}>
+        {busy ? 'Đang xoá…' : '🗑 Xoá trắng toàn bộ dữ liệu'}
+      </Button>
+      {msg && (
+        <div style={{ marginTop: 12 }}>
+          <Alert kind={msg.kind}>{msg.text}</Alert>
+        </div>
+      )}
+    </Card>
   )
 }
