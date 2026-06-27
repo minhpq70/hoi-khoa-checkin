@@ -59,28 +59,45 @@ export default function CheckInPage() {
 function Scanner({ onScan }) {
   const [error, setError] = useState(null)
   const [manual, setManual] = useState('')
-  const ref = useRef(null)
+  // onScan là hàm mới mỗi render -> giữ qua ref để effect chỉ chạy 1 lần (không restart camera).
+  const onScanRef = useRef(onScan)
+  onScanRef.current = onScan
 
   useEffect(() => {
     const qr = new Html5Qrcode('qr-reader')
-    let stopped = false
+    let done = false // đã quét xong & dọn DOM chưa
+
+    // Dọn html5-qrcode TRƯỚC khi React unmount #qr-reader, tránh lỗi removeChild -> trắng màn.
+    const cleanup = async () => {
+      try {
+        if (qr.isScanning) await qr.stop()
+      } catch {
+        /* đã dừng rồi */
+      }
+      try {
+        qr.clear()
+      } catch {
+        /* noop */
+      }
+    }
+
     qr.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: 240 },
-      (text) => {
+      async (text) => {
         const id = parseRoomId(text)
-        if (id && !stopped) {
-          stopped = true
-          qr.stop().finally(() => onScan(id))
-        }
+        if (!id || done) return
+        done = true
+        await cleanup()
+        onScanRef.current(id)
       },
       () => {}, // bỏ qua lỗi quét từng frame
     ).catch((e) => setError('Không mở được camera: ' + e.message + '. Nhập mã thủ công bên dưới.'))
-    ref.current = qr
+
     return () => {
-      qr.stop().catch(() => {})
+      if (!done) cleanup()
     }
-  }, [onScan])
+  }, [])
 
   function submitManual(e) {
     e.preventDefault()
