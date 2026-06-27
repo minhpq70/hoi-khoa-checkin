@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
-import { exportRoomsXlsx, norm } from '../../lib/excel.js'
+import { exportRoomsXlsx } from '../../lib/excel.js'
 import { qrDataUrl } from '../../lib/qrExport.js'
 import { Card, Button, Badge, Alert, Spinner, colors } from '../../ui.jsx'
 
@@ -11,28 +11,16 @@ export default function Export() {
 
   useEffect(() => {
     ;(async () => {
-      const [{ data }, { data: regs }] = await Promise.all([
-        supabase
-          .from('logical_room')
-          .select('id, room_code, type, room_member(display_name, is_companion)')
-          .order('room_code'),
-        supabase.from('registrant').select('full_name, class'),
-      ])
-      // map tên -> lớp (room_member không lưu lớp, lấy lại từ registrant)
-      const classByName = new Map()
-      ;(regs || []).forEach((r) => {
-        const k = norm(r.full_name)
-        if (!classByName.has(k)) classByName.set(k, r.class || '')
-      })
+      const { data } = await supabase
+        .from('logical_room')
+        .select('id, room_code, type, room_member(display_name, class, is_companion)')
+        .order('room_code')
 
       const mapped = (data || []).map((r) => ({
         room_code: r.room_code,
         type: r.type,
         qr_id: r.id,
-        members: (r.room_member || []).map((m) => ({
-          name: m.display_name,
-          class: m.is_companion ? '' : classByName.get(norm(m.display_name)) || '',
-        })),
+        members: (r.room_member || []).map((m) => ({ name: m.display_name, class: m.class || '' })),
       }))
       setRooms(mapped)
       // ảnh QR preview — QR chứa mã phòng (D01/T01)

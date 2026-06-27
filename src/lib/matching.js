@@ -5,11 +5,11 @@ import { norm } from './excel.js'
 // (2) gợi ý twin cho phần còn lại (gom theo lớp)
 // (3) admin chỉnh tay rồi mới chốt
 //
-// Mỗi member: { name, registrant_id|null, is_companion }
+// Mỗi member: { name, class, registrant_id|null, is_companion }
 // (companion ngoài danh sách đăng ký -> registrant_id=null, is_companion=true, chỉ hiển thị)
 
-function member(name, registrant_id = null, is_companion = false) {
-  return { name, registrant_id, is_companion }
+function member(name, klass = '', registrant_id = null, is_companion = false) {
+  return { name, class: klass || '', registrant_id, is_companion }
 }
 
 export function autoMatch(registrants) {
@@ -25,12 +25,18 @@ export function autoMatch(registrants) {
     const compReg = byNorm.get(norm(r.companion_name))
     if (compReg && compReg.id !== r.id && !used.has(compReg.id)) {
       // cả hai đều là người đăng ký -> 1 phòng double duy nhất
-      rooms.push({ type: 'double', members: [member(r.full_name, r.id), member(compReg.full_name, compReg.id)] })
+      rooms.push({
+        type: 'double',
+        members: [member(r.full_name, r.class, r.id), member(compReg.full_name, compReg.class, compReg.id)],
+      })
       used.add(r.id)
       used.add(compReg.id)
     } else if (!compReg) {
       // companion là người ngoài danh sách -> double, companion chỉ hiển thị
-      rooms.push({ type: 'double', members: [member(r.full_name, r.id), member(r.companion_name, null, true)] })
+      rooms.push({
+        type: 'double',
+        members: [member(r.full_name, r.class, r.id), member(r.companion_name, '', null, true)],
+      })
       used.add(r.id)
     }
     // compReg tồn tại nhưng đã dùng -> để r rơi xuống nhóm twin bên dưới
@@ -46,7 +52,7 @@ export function autoMatch(registrants) {
   for (const list of Object.values(groups)) {
     for (let i = 0; i < list.length; i += 2) {
       const pair = list.slice(i, i + 2)
-      rooms.push({ type: 'twin', members: pair.map((p) => member(p.full_name, p.id)) })
+      rooms.push({ type: 'twin', members: pair.map((p) => member(p.full_name, p.class, p.id)) })
     }
   }
 
@@ -59,6 +65,7 @@ export function assignRoomCodes(rooms) {
   const counters = { double: 0, twin: 0 }
   const prefix = { double: 'D', twin: 'T' }
   return rooms.map((r) => {
+    if (r.room_code) return r // giữ mã đã có sẵn (vd nhập từ Excel)
     counters[r.type] += 1
     const n = String(counters[r.type]).padStart(2, '0')
     return { ...r, room_code: `${prefix[r.type]}${n}` }

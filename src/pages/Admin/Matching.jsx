@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { autoMatch, assignRoomCodes } from '../../lib/matching.js'
+import { exportMatchingXlsx, matchingTemplateXlsx, readMatchingExcel } from '../../lib/excel.js'
 import { Card, Button, Badge, Alert, Spinner, colors } from '../../ui.jsx'
 
 const DRAFT_KEY = 'checkin.matching.draft'
@@ -77,10 +78,38 @@ export default function Matching({ onFinalized }) {
     setDraft((d) =>
       d.map((r) =>
         r.tempId === tempId
-          ? { ...r, members: [...r.members, { name: registrant.full_name, registrant_id: registrant.id, is_companion: false }] }
+          ? {
+              ...r,
+              members: [
+                ...r.members,
+                { name: registrant.full_name, class: registrant.class || '', registrant_id: registrant.id, is_companion: false },
+              ],
+            }
           : r,
       ),
     )
+  }
+
+  function exportDraft() {
+    if (!draft.length) return
+    exportMatchingXlsx(assignRoomCodes(draft))
+  }
+
+  async function importDraft(file) {
+    if (!file) return
+    setMsg(null)
+    try {
+      const { rooms, errors } = await readMatchingExcel(file)
+      if (!rooms.length) {
+        setMsg({ kind: 'error', text: 'File không có phòng hợp lệ.' })
+        return
+      }
+      setDraft(rooms)
+      const note = errors.length ? ` (${errors.length} dòng lỗi bị bỏ qua)` : ''
+      setMsg({ kind: 'success', text: `Đã nạp ${rooms.length} phòng từ Excel${note}. Kiểm tra rồi bấm "Chốt ghép phòng".` })
+    } catch (e) {
+      setMsg({ kind: 'error', text: 'Lỗi đọc file: ' + e.message })
+    }
   }
 
   async function finalize() {
@@ -108,7 +137,9 @@ export default function Matching({ onFinalized }) {
       const memberRows = []
       coded.forEach((r) => {
         const lid = byCode.get(r.room_code)
-        r.members.forEach((m) => memberRows.push({ logical_room_id: lid, display_name: m.name, is_companion: !!m.is_companion }))
+        r.members.forEach((m) =>
+          memberRows.push({ logical_room_id: lid, display_name: m.name, class: m.class || null, is_companion: !!m.is_companion }),
+        )
       })
       const { error: e2 } = await supabase.from('room_member').insert(memberRows)
       if (e2) throw e2
@@ -168,7 +199,7 @@ export default function Matching({ onFinalized }) {
       )}
 
       <Card>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 10 }}>
           <b>{registrants.length}</b> người đăng ký · <b>{draft.length}</b> phòng nháp · còn{' '}
           <b style={{ color: unassigned.length ? colors.amber : colors.green }}>{unassigned.length}</b> người chưa xếp
           <div style={{ flex: 1 }} />
@@ -180,6 +211,40 @@ export default function Matching({ onFinalized }) {
           </Button>
           <Button variant="ghost" onClick={() => addRoom('twin')}>
             + Phòng twin
+          </Button>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', borderTop: `1px solid ${colors.border}`, paddingTop: 10 }}>
+          <span style={{ fontSize: 13, color: colors.gray }}>Ghép bằng Excel:</span>
+          <Button variant="ghost" onClick={matchingTemplateXlsx}>
+            ⬇ Tải mẫu
+          </Button>
+          <label>
+            <span
+              style={{
+                display: 'inline-block',
+                padding: '10px 16px',
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: '#fff',
+              }}
+            >
+              📥 Import Excel
+            </span>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                importDraft(e.target.files?.[0])
+                e.target.value = ''
+              }}
+            />
+          </label>
+          <Button variant="ghost" onClick={exportDraft} disabled={!draft.length}>
+            📊 Xuất Excel ghép phòng
           </Button>
         </div>
       </Card>
@@ -255,6 +320,7 @@ function RoomCard({ room, index, unassigned, onType, onRemoveRoom, onRemoveMembe
           <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
             <span style={{ flex: 1 }}>
               {m.name}
+              {m.class && <span style={{ color: colors.gray, fontSize: 12 }}> · {m.class}</span>}
               {m.is_companion && <span style={{ color: colors.gray, fontSize: 12 }}> (đi cùng)</span>}
             </span>
             <button onClick={() => onRemoveMember(idx)} style={{ color: colors.red, cursor: 'pointer', background: 'none', border: 'none' }}>

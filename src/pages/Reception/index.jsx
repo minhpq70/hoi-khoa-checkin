@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase.js'
 import { useSession, LoginCard } from '../../components/Auth.jsx'
-import { norm, roomsTemplateXlsx, readRoomsExcel, exportGuestListXlsx } from '../../lib/excel.js'
+import { roomsTemplateXlsx, readRoomsExcel, exportGuestListXlsx } from '../../lib/excel.js'
 import { Container, Card, Button, Input, Badge, Alert, Spinner, colors } from '../../ui.jsx'
 
 // Phase 2 — màn lễ tân: đăng nhập, nhập/import phòng, dashboard, xuất danh sách khách.
@@ -198,25 +198,17 @@ function ImportRooms() {
 function Dashboard() {
   const [physical, setPhysical] = useState([])
   const [logical, setLogical] = useState([])
-  const [classByName, setClassByName] = useState(new Map())
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null) // phòng vật lý đang xem chi tiết
 
   async function load() {
-    const [{ data: phys }, { data: logi }, { data: regs }] = await Promise.all([
+    const [{ data: phys }, { data: logi }] = await Promise.all([
       supabase.from('physical_room').select('id, room_number, type, status, logical_room_id').order('room_number'),
       supabase
         .from('logical_room')
-        .select('id, room_code, type, status, physical_room_id, waiting_since, room_member(display_name, is_companion)')
+        .select('id, room_code, type, status, physical_room_id, waiting_since, room_member(display_name, class, is_companion)')
         .order('room_code'),
-      supabase.from('registrant').select('full_name, class'),
     ])
-    const cmap = new Map()
-    ;(regs || []).forEach((r) => {
-      const k = norm(r.full_name)
-      if (!cmap.has(k)) cmap.set(k, r.class || '')
-    })
-    setClassByName(cmap)
     setPhysical(phys || [])
     setLogical(logi || [])
     setLoading(false)
@@ -236,10 +228,7 @@ function Dashboard() {
 
   const membersOf = (logicalId) => {
     const lr = logical.find((x) => x.id === logicalId)
-    return (lr?.room_member || []).map((m) => ({
-      name: m.display_name,
-      class: m.is_companion ? '' : classByName.get(norm(m.display_name)) || '',
-    }))
+    return (lr?.room_member || []).map((m) => ({ name: m.display_name, class: m.class || '' }))
   }
 
   const waiting = logical
@@ -256,11 +245,7 @@ function Dashboard() {
       .forEach((lr) => {
         const room_number = physById.get(lr.physical_room_id)?.room_number || ''
         ;(lr.room_member || []).forEach((m) =>
-          rows.push({
-            name: m.display_name,
-            class: m.is_companion ? '' : classByName.get(norm(m.display_name)) || '',
-            room_number,
-          }),
+          rows.push({ name: m.display_name, class: m.class || '', room_number }),
         )
       })
     rows.sort((a, b) => String(a.room_number).localeCompare(String(b.room_number), 'vi', { numeric: true }))

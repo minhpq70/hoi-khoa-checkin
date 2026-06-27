@@ -28,8 +28,11 @@ create table if not exists room_member (
   id              bigint generated always as identity primary key,
   logical_room_id uuid not null references logical_room(id) on delete cascade,
   display_name    text not null,
+  class           text,
   is_companion    boolean default false
 );
+-- nâng cấp DB cũ: thêm cột class nếu chưa có
+alter table room_member add column if not exists class text;
 
 create table if not exists physical_room (
   id              bigint generated always as identity primary key,

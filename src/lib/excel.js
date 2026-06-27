@@ -165,3 +165,108 @@ export function exportGuestListXlsx(rows) {
   XLSX.utils.book_append_sheet(wb, ws, 'Danh sách khách')
   XLSX.writeFile(wb, 'danh-sach-khach-phong.xlsx')
 }
+
+// === Phase 1: ghép phòng bằng Excel (xuất / mẫu / import) ===
+// Quy tắc: có người đi cùng -> phòng double, 1 dòng (cột "Họ tên người đi cùng").
+//          không có người đi cùng -> mỗi mã phòng 2 dòng (2 người).
+const MATCH_HINTS = {
+  room_code: ['ma phong', 'maphong', 'room code', 'room_code', 'ma'],
+  type: ['loai', 'type'],
+  full_name: ['ho va ten', 'ho ten', 'hoten', 'name'],
+  class: ['lop', 'class'],
+  companion_name: ['nguoi di cung', 'companion'],
+}
+
+// rooms: [{ room_code, type, members:[{name, class, is_companion}] }] (đã gán mã)
+export function exportMatchingXlsx(rooms) {
+  const rows = []
+  rooms.forEach((r) => {
+    const typeLabel = r.type === 'double' ? 'Double' : 'Twin'
+    const companion = r.members.find((m) => m.is_companion)
+    if (companion) {
+      const main = r.members.find((m) => !m.is_companion) || {}
+      rows.push({
+        'Mã phòng': r.room_code,
+        'Loại phòng': 'Double',
+        'Họ và tên': main.name || '',
+        Lớp: main.class || '',
+        'Họ tên người đi cùng': companion.name,
+      })
+    } else {
+      r.members.forEach((m) => {
+        rows.push({
+          'Mã phòng': r.room_code,
+          'Loại phòng': typeLabel,
+          'Họ và tên': m.name,
+          Lớp: m.class || '',
+          'Họ tên người đi cùng': '',
+        })
+      })
+    }
+  })
+  const ws = XLSX.utils.json_to_sheet(rows, {
+    header: ['Mã phòng', 'Loại phòng', 'Họ và tên', 'Lớp', 'Họ tên người đi cùng'],
+  })
+  ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 26 }, { wch: 12 }, { wch: 26 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Ghép phòng')
+  XLSX.writeFile(wb, 'ghep-phong.xlsx')
+}
+
+export function matchingTemplateXlsx() {
+  const rows = [
+    { 'Mã phòng': 'D01', 'Loại phòng': 'Double', 'Họ và tên': 'Nguyễn Văn A', Lớp: 'A1', 'Họ tên người đi cùng': 'Trần Thị B' },
+    { 'Mã phòng': 'T01', 'Loại phòng': 'Twin', 'Họ và tên': 'Lê Văn C', Lớp: 'A2', 'Họ tên người đi cùng': '' },
+    { 'Mã phòng': 'T01', 'Loại phòng': 'Twin', 'Họ và tên': 'Phạm Thị D', Lớp: 'A3', 'Họ tên người đi cùng': '' },
+  ]
+  const ws = XLSX.utils.json_to_sheet(rows, {
+    header: ['Mã phòng', 'Loại phòng', 'Họ và tên', 'Lớp', 'Họ tên người đi cùng'],
+  })
+  ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 26 }, { wch: 12 }, { wch: 26 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Ghép phòng')
+  XLSX.writeFile(wb, 'mau-ghep-phong.xlsx')
+}
+
+// Đọc file ghép phòng -> { rooms:[{tempId, room_code, type, members}], errors }
+export async function readMatchingExcel(file) {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type: 'array' })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  const rows = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' })
+  const headers = rows.length ? Object.keys(rows[0]) : []
+  const col = {}
+  for (const [field, hints] of Object.entries(MATCH_HINTS)) {
+    col[field] = headers.find((h) => hints.some((k) => norm(h).includes(k)))
+  }
+
+  const errors = []
+  const byCode = new Map() // room_code -> { type, members }
+  rows.forEach((r, i) => {
+    const room_code = (r[col.room_code] ?? '').toString().trim()
+    const full_name = (r[col.full_name] ?? '').toString().trim()
+    const klass = (r[col.class] ?? '').toString().trim()
+    const companion = (r[col.companion_name] ?? '').toString().trim()
+    const typeRaw = normalizeRoomType(r[col.type])
+    if (!room_code) return errors.push({ row: i + 2, error: 'thiếu mã phòng' })
+    if (!full_name) return errors.push({ row: i + 2, error: 'thiếu họ tên' })
+
+    if (!byCode.has(room_code)) byCode.set(room_code, { type: typeRaw || 'twin', members: [] })
+    const room = byCode.get(room_code)
+    room.members.push({ name: full_name, class: klass, registrant_id: null, is_companion: false })
+    if (companion) {
+      room.type = 'double' // có người đi cùng -> double
+      room.members.push({ name: companion, class: '', registrant_id: null, is_companion: true })
+    } else if (typeRaw) {
+      room.type = typeRaw
+    }
+  })
+
+  const matchRooms = [...byCode.entries()].map(([room_code, v], idx) => ({
+    tempId: idx + 1,
+    room_code,
+    type: v.type,
+    members: v.members,
+  }))
+  return { rooms: matchRooms, errors }
+}
