@@ -57,10 +57,9 @@ export function transform(rows, mapping) {
 export function exportRoomsXlsx(rooms) {
   // rooms: [{ room_code, type, members:[name], qr_id, qr_url }]
   const data = rooms.map((r) => ({
-    'Mã phòng': r.room_code,
+    'Mã phòng': r.room_code, // cũng là nội dung QR — lễ tân quét hoặc gõ tay mã này
     Loại: r.type === 'double' ? 'Double' : 'Twin',
     'Người ở': r.members.join(', '),
-    'Mã QR': r.qr_id, // giá trị nằm trong QR (UUID) — lễ tân quét ra cái này
   }))
   const ws = XLSX.utils.json_to_sheet(data)
   const wb = XLSX.utils.book_new()

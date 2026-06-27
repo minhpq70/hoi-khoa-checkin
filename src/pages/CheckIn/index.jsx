@@ -8,16 +8,32 @@ import { Container, Card, Button, Badge, Alert, Spinner, colors } from '../../ui
 // Phase 3 — màn check-in: CHỈ lễ tân đã đăng nhập mới quét được (tránh người ngoài
 // quét nhầm tự vào hàng đợi). QR chứa UUID trần, quét -> check_in -> hiện phòng / "đang chờ".
 
-// QR có thể là URL /checkin?r=<uuid> hoặc uuid trần.
-function parseRoomId(text) {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Chuẩn hoá mã phòng người dùng gõ: 'd-01', 'D 1', 'd1' -> 'D01'. Không hợp lệ -> null.
+function normalizeRoomCode(s) {
+  const m = String(s).toUpperCase().replace(/[^A-Z0-9]/g, '').match(/^([DT])0*(\d+)$/)
+  return m ? `${m[1]}${m[2].padStart(2, '0')}` : null
+}
+
+// Đầu vào (QR mới = mã phòng, hoặc UUID/URL cũ) -> logical_room.id. Không tìm thấy -> null.
+async function resolveRoomId(input) {
+  let t = (input ?? '').trim()
+  if (!t) return null
+  // URL cũ /checkin?r=...
   try {
-    const r = new URL(text).searchParams.get('r')
-    if (r) return r
+    const r = new URL(t).searchParams.get('r')
+    if (r) t = r.trim()
   } catch {
     /* không phải URL */
   }
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text.trim())) return text.trim()
-  return null
+  // UUID (thẻ QR đời cũ)
+  if (UUID_RE.test(t)) return t
+  // Mã phòng (QR mới / gõ tay) -> tra DB
+  const code = normalizeRoomCode(t)
+  if (!code) return null
+  const { data } = await supabase.from('logical_room').select('id').eq('room_code', code).maybeSingle()
+  return data?.id ?? null
 }
 
 export default function CheckInPage() {
@@ -81,12 +97,19 @@ function Scanner({ onScan }) {
       }
     }
 
+    let busy = false // tránh tra DB dồn dập khi 1 mã được decode liên tục
     qr.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: 240 },
       async (text) => {
-        const id = parseRoomId(text)
-        if (!id || done) return
+        if (done || busy) return
+        busy = true
+        const id = await resolveRoomId(text)
+        if (!id) {
+          setError('Không nhận ra mã: ' + text)
+          busy = false
+          return // tiếp tục quét
+        }
         done = true
         await cleanup()
         onScanRef.current(id)
@@ -99,28 +122,28 @@ function Scanner({ onScan }) {
     }
   }, [])
 
-  function submitManual(e) {
+  async function submitManual(e) {
     e.preventDefault()
-    const id = parseRoomId(manual)
+    const id = await resolveRoomId(manual)
     if (id) onScan(id)
-    else setError('Mã không hợp lệ.')
+    else setError('Không tìm thấy phòng với mã: ' + manual)
   }
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <Card>
-        <p style={{ fontSize: 14, color: colors.gray, marginBottom: 12 }}>Đưa mã QR của phòng vào khung camera.</p>
+        <p style={{ fontSize: 14, color: colors.gray, marginBottom: 12 }}>Đưa mã QR của phòng vào khung camera (QR chứa mã phòng).</p>
         <div id="qr-reader" style={{ width: '100%' }} />
       </Card>
       {error && <Alert kind="warn">{error}</Alert>}
       <Card>
         <form onSubmit={submitManual} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <label style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, color: colors.gray, marginBottom: 4 }}>Hoặc nhập mã QR / link thủ công</div>
+            <div style={{ fontSize: 13, color: colors.gray, marginBottom: 4 }}>Hoặc nhập mã phòng (vd D01, T05)</div>
             <input
               value={manual}
               onChange={(e) => setManual(e.target.value)}
-              placeholder="uuid hoặc .../checkin?r=…"
+              placeholder="D01 / T05"
               style={{ width: '100%', padding: '10px 12px', border: `1px solid ${colors.border}`, borderRadius: 8 }}
             />
           </label>

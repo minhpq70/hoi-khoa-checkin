@@ -53,13 +53,14 @@ export function autoMatch(registrants) {
   return rooms.map((r, idx) => ({ tempId: idx + 1, ...r }))
 }
 
-// Sinh room_code lúc chốt: D-01.. cho double, T-01.. cho twin (theo thứ tự).
+// Sinh room_code lúc chốt: D01.. cho double, T01.. cho twin (theo thứ tự).
+// Mã phòng cũng chính là nội dung QR -> ngắn gọn, đọc/gõ tay được khi không có thẻ.
 export function assignRoomCodes(rooms) {
   const counters = { double: 0, twin: 0 }
   const prefix = { double: 'D', twin: 'T' }
   return rooms.map((r) => {
     counters[r.type] += 1
     const n = String(counters[r.type]).padStart(2, '0')
-    return { ...r, room_code: `${prefix[r.type]}-${n}` }
+    return { ...r, room_code: `${prefix[r.type]}${n}` }
   })
 }
