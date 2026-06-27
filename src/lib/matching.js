@@ -1,60 +1,37 @@
-import { norm } from './excel.js'
-
-// === Phase 1: ghép phòng bán tự động (spec mục 9) ===
-// (1) ép double cho ai có người đi cùng / các cặp đôi
-// (2) gợi ý twin cho phần còn lại (gom theo lớp)
-// (3) admin chỉnh tay rồi mới chốt
+// === Phase 1: ghép phòng ===
+// - Phòng DOUBLE: danh sách cố định, nạp qua "Import Excel ghép phòng" (không tự động).
+// - Phòng TWIN: tự động ghép theo ưu tiên giới tính (bắt buộc cùng giới) -> lớp,
+//   hoặc admin chỉnh tay trên app.
 //
 // Mỗi member: { name, class, registrant_id|null, is_companion }
-// (companion ngoài danh sách đăng ký -> registrant_id=null, is_companion=true, chỉ hiển thị)
 
 function member(name, klass = '', registrant_id = null, is_companion = false) {
   return { name, class: klass || '', registrant_id, is_companion }
 }
 
-export function autoMatch(registrants) {
-  const byNorm = new Map()
-  registrants.forEach((r) => byNorm.set(norm(r.full_name), r))
+// Tự động ghép TWIN cho những người chưa được xếp (không nằm trong assignedIds).
+// Quy tắc: cùng giới tính (bắt buộc) -> ưu tiên cùng lớp (sắp theo lớp rồi ghép tuần tự).
+export function autoMatchTwins(registrants, assignedIds = new Set()) {
+  const rest = registrants.filter((r) => !assignedIds.has(r.id))
 
-  const used = new Set()
-  const rooms = []
-
-  // 1. Doubles từ companion_name
-  for (const r of registrants) {
-    if (used.has(r.id) || !r.companion_name) continue
-    const compReg = byNorm.get(norm(r.companion_name))
-    if (compReg && compReg.id !== r.id && !used.has(compReg.id)) {
-      // cả hai đều là người đăng ký -> 1 phòng double duy nhất
-      rooms.push({
-        type: 'double',
-        members: [member(r.full_name, r.class, r.id), member(compReg.full_name, compReg.class, compReg.id)],
-      })
-      used.add(r.id)
-      used.add(compReg.id)
-    } else if (!compReg) {
-      // companion là người ngoài danh sách -> double, companion chỉ hiển thị
-      rooms.push({
-        type: 'double',
-        members: [member(r.full_name, r.class, r.id), member(r.companion_name, '', null, true)],
-      })
-      used.add(r.id)
-    }
-    // compReg tồn tại nhưng đã dùng -> để r rơi xuống nhóm twin bên dưới
-  }
-
-  // 2. Twin cho phần còn lại, gom theo lớp rồi ghép đôi tuần tự
-  const rest = registrants.filter((r) => !used.has(r.id))
-  const groups = {}
+  const byGender = {}
   rest.forEach((r) => {
-    const key = r.class || '(không lớp)'
-    ;(groups[key] ||= []).push(r)
+    const g = r.gender || '(chưa có giới tính)'
+    ;(byGender[g] ||= []).push(r)
   })
-  for (const list of Object.values(groups)) {
-    for (let i = 0; i < list.length; i += 2) {
-      const pair = list.slice(i, i + 2)
-      rooms.push({ type: 'twin', members: pair.map((p) => member(p.full_name, p.class, p.id)) })
-    }
-  }
+
+  const rooms = []
+  Object.keys(byGender)
+    .sort()
+    .forEach((g) => {
+      const list = byGender[g].sort((a, b) =>
+        String(a.class || '').localeCompare(String(b.class || ''), 'vi', { numeric: true }),
+      )
+      for (let i = 0; i < list.length; i += 2) {
+        const pair = list.slice(i, i + 2)
+        rooms.push({ type: 'twin', members: pair.map((p) => member(p.full_name, p.class, p.id)) })
+      }
+    })
 
   return rooms.map((r, idx) => ({ tempId: idx + 1, ...r }))
 }

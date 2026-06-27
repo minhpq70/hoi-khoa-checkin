@@ -6,6 +6,7 @@ import { Card, Button, Select, Alert, colors } from '../../ui.jsx'
 const FIELD_LABELS = {
   full_name: 'Họ và tên *',
   class: 'Lớp',
+  gender: 'Giới tính',
   companion_name: 'Người đi cùng',
 }
 
@@ -59,8 +60,8 @@ export default function Import({ onImported }) {
       <Card>
         <h3 style={{ marginBottom: 12 }}>1. Tải file Excel đăng ký (.xlsx)</h3>
         <p style={{ fontSize: 13, color: colors.gray, marginBottom: 12 }}>
-          Chỉ <b>họ tên, lớp, người đi cùng</b> được đọc vào hệ thống. Cột CCCD / năm sinh (nếu có) bị bỏ qua —
-          không bao giờ vào database.
+          Chỉ <b>họ tên, lớp, giới tính, người đi cùng</b> được đọc vào hệ thống. Cột CCCD / năm sinh (nếu có) bị bỏ qua
+          — không bao giờ vào database.
         </p>
         <label
           onDragOver={(e) => {

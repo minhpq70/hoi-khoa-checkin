@@ -9,9 +9,12 @@ create table if not exists registrant (
   id              uuid primary key default gen_random_uuid(),
   full_name       text not null,
   class           text,
+  gender          text,            -- 'Nam' | 'Nữ' (dùng cho quy tắc ghép Twin)
   companion_name  text,
   created_at      timestamptz default now()
 );
+-- nâng cấp DB cũ: thêm cột gender nếu chưa có
+alter table registrant add column if not exists gender text;
 
 create table if not exists logical_room (
   id               uuid primary key default gen_random_uuid(),

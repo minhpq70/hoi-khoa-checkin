@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
-import { autoMatch, assignRoomCodes } from '../../lib/matching.js'
+import { autoMatchTwins, assignRoomCodes } from '../../lib/matching.js'
 import { exportMatchingXlsx, matchingTemplateXlsx, readMatchingExcel } from '../../lib/excel.js'
 import { Card, Button, Badge, Alert, Spinner, colors } from '../../ui.jsx'
 
@@ -21,7 +21,7 @@ export default function Matching({ onFinalized }) {
 
   async function load() {
     const [{ data: regs }, { count }] = await Promise.all([
-      supabase.from('registrant').select('id, full_name, class, companion_name').order('created_at'),
+      supabase.from('registrant').select('id, full_name, class, gender, companion_name').order('created_at'),
       supabase.from('logical_room').select('id', { count: 'exact', head: true }),
     ])
     setRegistrants(regs || [])
@@ -47,9 +47,18 @@ export default function Matching({ onFinalized }) {
     [registrants, assignedIds],
   )
 
-  function runAuto() {
+  function runAutoTwins() {
     setMsg(null)
-    setDraft(autoMatch(registrants || []))
+    setDraft((d) => {
+      // giữ nguyên các phòng double (danh sách cố định đã import), chỉ xếp lại Twin
+      const doubles = d.filter((r) => r.type === 'double')
+      const assigned = new Set()
+      doubles.forEach((r) => r.members.forEach((m) => m.registrant_id && assigned.add(m.registrant_id)))
+      const twins = autoMatchTwins(registrants || [], assigned)
+      let id = doubles.reduce((mx, r) => Math.max(mx, r.tempId), 0)
+      const twinsRenum = twins.map((t) => ({ ...t, tempId: ++id }))
+      return [...doubles, ...twinsRenum]
+    })
   }
 
   function nextTempId() {
@@ -203,8 +212,8 @@ export default function Matching({ onFinalized }) {
           <b>{registrants.length}</b> người đăng ký · <b>{draft.length}</b> phòng nháp · còn{' '}
           <b style={{ color: unassigned.length ? colors.amber : colors.green }}>{unassigned.length}</b> người chưa xếp
           <div style={{ flex: 1 }} />
-          <Button variant="purple" onClick={runAuto} disabled={!registrants.length}>
-            ⚡ Tự động ghép
+          <Button variant="purple" onClick={runAutoTwins} disabled={!registrants.length}>
+            ⚡ Tự động ghép Twin
           </Button>
           <Button variant="ghost" onClick={() => addRoom('double')}>
             + Phòng double
@@ -247,6 +256,10 @@ export default function Matching({ onFinalized }) {
             📊 Xuất Excel ghép phòng
           </Button>
         </div>
+        <p style={{ fontSize: 12, color: colors.gray, marginTop: 8 }}>
+          Quy trình gợi ý: <b>Import</b> danh sách phòng Double (file có cột "Người đi cùng") → bấm{' '}
+          <b>Tự động ghép Twin</b> (xếp người còn lại theo giới tính → lớp) → chỉnh tay nếu cần → <b>Chốt</b>.
+        </p>
       </Card>
 
       {unassigned.length > 0 && (
@@ -258,7 +271,9 @@ export default function Matching({ onFinalized }) {
                 key={r.id}
                 style={{ fontSize: 13, padding: '4px 10px', background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8 }}
               >
-                {r.full_name} {r.class && <span style={{ color: colors.gray }}>· {r.class}</span>}
+                {r.full_name}
+                {r.class && <span style={{ color: colors.gray }}> · {r.class}</span>}
+                {r.gender && <span style={{ color: colors.gray }}> · {r.gender}</span>}
               </span>
             ))}
           </div>

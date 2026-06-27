@@ -9,7 +9,17 @@ import QRCode from 'qrcode'
 const COLUMN_HINTS = {
   full_name: ['ho va ten', 'ho ten', 'hoten', 'name'],
   class: ['lop', 'class'],
+  gender: ['gioi tinh', 'gioi', 'sex', 'gender'],
   companion_name: ['nguoi di cung', 'ten nguoi di cung', 'companion'],
+}
+
+// Chuẩn hoá giới tính -> 'Nam' | 'Nữ' | null (ưu tiên nhận diện Nữ trước vì 'female' chứa 'male').
+export function normalizeGender(s) {
+  const n = norm(s)
+  if (!n) return null
+  if (n.startsWith('nu') || n.startsWith('f') || n.includes('female') || n.includes('gai')) return 'Nữ'
+  if (n.startsWith('na') || n.startsWith('m') || n.includes('male') || n.includes('trai')) return 'Nam'
+  return s.toString().trim()
 }
 
 export const norm = (s) =>
@@ -47,6 +57,7 @@ export function transform(rows, mapping) {
     const rec = {
       full_name: (r[mapping.full_name] ?? '').toString().trim(),
       class: (r[mapping.class] ?? '').toString().trim() || null,
+      gender: normalizeGender(r[mapping.gender]),
       companion_name: (r[mapping.companion_name] ?? '').toString().trim() || null,
     }
     if (!rec.full_name) errors.push({ row: i + 2, error: 'thiếu họ tên', data: r })
