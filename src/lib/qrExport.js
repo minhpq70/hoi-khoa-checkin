@@ -1,19 +1,21 @@
 import QRCode from 'qrcode'
 import { jsPDF } from 'jspdf'
 
-// QR chỉ chứa logical_room.id, bọc trong URL /checkin?r=<id> (spec mục 7).
+// QR CHỈ chứa logical_room.id (UUID trần), KHÔNG bọc URL.
+// -> Camera điện thoại quét chỉ ra 1 chuỗi vô nghĩa, không tự mở link/check-in.
+//    Việc check-in chỉ thực hiện ở màn lễ tân (đã đăng nhập) qua trình quét app.
 export function qrUrl(logicalRoomId) {
   return `${window.location.origin}/checkin?r=${logicalRoomId}`
 }
 
 // === Phase 1 mục 12.2: PDF — mỗi phòng 1 thẻ A6 (QR + mã phòng + người ở + loại) ===
 export async function exportRoomsPdf(rooms) {
-  // rooms: [{ room_code, type, members:[name], qr_url }]
+  // rooms: [{ room_code, type, members:[name], qr_id }]
   const doc = new jsPDF({ unit: 'mm', format: 'a6' })
   for (let i = 0; i < rooms.length; i++) {
     const r = rooms[i]
     if (i > 0) doc.addPage()
-    const dataUrl = await QRCode.toDataURL(r.qr_url, { width: 400, margin: 1 })
+    const dataUrl = await QRCode.toDataURL(r.qr_id, { width: 400, margin: 1 })
     doc.addImage(dataUrl, 'PNG', 35, 12, 35, 35)
     doc.setFontSize(18)
     doc.text(r.room_code, 52, 56, { align: 'center' })

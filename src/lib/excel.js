@@ -60,8 +60,7 @@ export function exportRoomsXlsx(rooms) {
     'Mã phòng': r.room_code,
     Loại: r.type === 'double' ? 'Double' : 'Twin',
     'Người ở': r.members.join(', '),
-    'Mã QR': r.qr_id,
-    'Link QR': r.qr_url,
+    'Mã QR': r.qr_id, // giá trị nằm trong QR (UUID) — lễ tân quét ra cái này
   }))
   const ws = XLSX.utils.json_to_sheet(data)
   const wb = XLSX.utils.book_new()

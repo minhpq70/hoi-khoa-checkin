@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Html5Qrcode } from 'html5-qrcode'
 import { supabase } from '../../lib/supabase.js'
+import { useSession, LoginCard } from '../../components/Auth.jsx'
 import { Container, Card, Button, Badge, Alert, Spinner, colors } from '../../ui.jsx'
 
-// Phase 3 — màn check-in public: quét QR -> check_in -> hiện phòng / "đang chờ" (Realtime).
+// Phase 3 — màn check-in: CHỈ lễ tân đã đăng nhập mới quét được (tránh người ngoài
+// quét nhầm tự vào hàng đợi). QR chứa UUID trần, quét -> check_in -> hiện phòng / "đang chờ".
 
 // QR có thể là URL /checkin?r=<uuid> hoặc uuid trần.
 function parseRoomId(text) {
@@ -21,6 +23,7 @@ function parseRoomId(text) {
 export default function CheckInPage() {
   const [params, setParams] = useSearchParams()
   const roomId = params.get('r')
+  const session = useSession()
 
   return (
     <Container width={480}>
@@ -28,9 +31,23 @@ export default function CheckInPage() {
         <Link to="/" style={{ color: colors.gray, fontSize: 14 }}>
           ← Trang chủ
         </Link>
-        <h2 style={{ marginLeft: 16 }}>Check-in</h2>
+        <h2 style={{ marginLeft: 16 }}>Check-in (lễ tân)</h2>
+        {session && (
+          <>
+            <div style={{ flex: 1 }} />
+            <span style={{ fontSize: 13, color: colors.gray, marginRight: 12 }}>{session.user.email?.split('@')[0]}</span>
+            <Button variant="ghost" onClick={() => supabase.auth.signOut()}>
+              Đăng xuất
+            </Button>
+          </>
+        )}
       </div>
-      {roomId ? (
+
+      {session === undefined ? (
+        <Spinner />
+      ) : !session ? (
+        <LoginCard title="Đăng nhập lễ tân để quét QR" />
+      ) : roomId ? (
         <Result roomId={roomId} onReset={() => setParams({})} />
       ) : (
         <Scanner onScan={(id) => setParams({ r: id })} />

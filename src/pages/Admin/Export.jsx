@@ -23,9 +23,9 @@ export default function Export() {
         qr_url: qrUrl(r.id),
       }))
       setRooms(mapped)
-      // sinh ảnh QR preview
+      // sinh ảnh QR preview — QR chứa UUID trần (không phải URL)
       const pv = {}
-      for (const r of mapped) pv[r.qr_id] = await qrDataUrl(r.qr_url, { width: 160 })
+      for (const r of mapped) pv[r.qr_id] = await qrDataUrl(r.qr_id, { width: 160 })
       setPreviews(pv)
     })()
   }, [])

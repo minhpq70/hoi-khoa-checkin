@@ -71,6 +71,11 @@ language plpgsql security definer set search_path = public as $$
 declare
   v_type text; v_status text; v_phys_id bigint; v_room_number text;
 begin
+  -- chỉ lễ tân đã đăng nhập mới được check-in (người ngoài quét nhầm sẽ bị chặn)
+  if auth.role() <> 'authenticated' then
+    raise exception 'UNAUTHORIZED';
+  end if;
+
   select lr.type, lr.status, lr.physical_room_id
     into v_type, v_status, v_phys_id
   from logical_room lr where lr.id = p_logical_room_id
@@ -138,8 +143,12 @@ end; $$;
 
 -- 4. Grants ------------------------------------------------
 
-grant execute on function check_in          to anon;
-grant execute on function add_available_room to authenticated;
+-- Postgres mặc định cấp EXECUTE cho PUBLIC -> phải revoke rồi mới giới hạn được.
+-- Cả hai RPC chỉ dành cho lễ tân đã đăng nhập.
+revoke execute on function check_in(uuid)                  from public, anon;
+revoke execute on function add_available_room(text, text)  from public, anon;
+grant  execute on function check_in(uuid)                  to authenticated;
+grant  execute on function add_available_room(text, text)  to authenticated;
 
 -- 5. Realtime ----------------------------------------------
 -- Cho client subscribe thay đổi (màn check-in chờ phòng, dashboard lễ tân).
