@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase.js'
-import { exportRoomsXlsx } from '../../lib/excel.js'
-import { exportRoomsPdf, qrUrl, qrDataUrl } from '../../lib/qrExport.js'
+import { exportRoomsXlsx, norm } from '../../lib/excel.js'
+import { qrDataUrl } from '../../lib/qrExport.js'
 import { Card, Button, Badge, Alert, Spinner, colors } from '../../ui.jsx'
 
 export default function Export() {
@@ -11,29 +11,41 @@ export default function Export() {
 
   useEffect(() => {
     ;(async () => {
-      const { data } = await supabase
-        .from('logical_room')
-        .select('id, room_code, type, room_member(display_name, is_companion)')
-        .order('room_code')
+      const [{ data }, { data: regs }] = await Promise.all([
+        supabase
+          .from('logical_room')
+          .select('id, room_code, type, room_member(display_name, is_companion)')
+          .order('room_code'),
+        supabase.from('registrant').select('full_name, class'),
+      ])
+      // map tên -> lớp (room_member không lưu lớp, lấy lại từ registrant)
+      const classByName = new Map()
+      ;(regs || []).forEach((r) => {
+        const k = norm(r.full_name)
+        if (!classByName.has(k)) classByName.set(k, r.class || '')
+      })
+
       const mapped = (data || []).map((r) => ({
         room_code: r.room_code,
         type: r.type,
-        members: (r.room_member || []).map((m) => m.display_name),
         qr_id: r.id,
-        qr_url: qrUrl(r.id),
+        members: (r.room_member || []).map((m) => ({
+          name: m.display_name,
+          class: m.is_companion ? '' : classByName.get(norm(m.display_name)) || '',
+        })),
       }))
       setRooms(mapped)
-      // sinh ảnh QR preview — QR chứa mã phòng (D01/T01)
+      // ảnh QR preview — QR chứa mã phòng (D01/T01)
       const pv = {}
       for (const r of mapped) pv[r.qr_id] = await qrDataUrl(r.room_code, { width: 160 })
       setPreviews(pv)
     })()
   }, [])
 
-  async function downloadPdf() {
+  async function downloadXlsx() {
     setBusy(true)
     try {
-      await exportRoomsPdf(rooms)
+      await exportRoomsXlsx(rooms)
     } finally {
       setBusy(false)
     }
@@ -48,11 +60,8 @@ export default function Export() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <b>{rooms.length}</b> phòng đã chốt
           <div style={{ flex: 1 }} />
-          <Button variant="green" onClick={() => exportRoomsXlsx(rooms)}>
-            📊 Xuất Excel danh sách
-          </Button>
-          <Button variant="purple" disabled={busy} onClick={downloadPdf}>
-            {busy ? 'Đang tạo PDF…' : '🪪 Xuất PDF thẻ QR'}
+          <Button variant="green" disabled={busy} onClick={downloadXlsx}>
+            {busy ? 'Đang tạo Excel…' : '📊 Xuất Excel (kèm ảnh QR)'}
           </Button>
         </div>
       </Card>
@@ -65,7 +74,7 @@ export default function Export() {
             <div style={{ margin: '4px 0' }}>
               <Badge status={r.type} />
             </div>
-            <div style={{ fontSize: 13, color: colors.gray }}>{r.members.join(' & ')}</div>
+            <div style={{ fontSize: 13, color: colors.gray }}>{r.members.map((m) => m.name).join(' & ')}</div>
           </Card>
         ))}
       </div>

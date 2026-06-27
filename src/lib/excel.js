@@ -1,4 +1,6 @@
 import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
+import QRCode from 'qrcode'
 
 // === Phase 1: import danh sách đăng ký từ .xlsx ===
 // CHỈ map 3 cột vào DB: full_name, class, companion_name.
@@ -53,16 +55,54 @@ export function transform(rows, mapping) {
   return { valid, errors }
 }
 
-// === Phase 1 mục 12.1: xuất Excel danh sách tổng các phòng ===
-export function exportRoomsXlsx(rooms) {
-  // rooms: [{ room_code, type, members:[name], qr_id, qr_url }]
-  const data = rooms.map((r) => ({
-    'Mã phòng': r.room_code, // cũng là nội dung QR — lễ tân quét hoặc gõ tay mã này
-    Loại: r.type === 'double' ? 'Double' : 'Twin',
-    'Người ở': r.members.join(', '),
-  }))
-  const ws = XLSX.utils.json_to_sheet(data)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Danh sách phòng')
-  XLSX.writeFile(wb, 'danh-sach-phong-QR.xlsx')
+// === Phase 1 mục 12.1: xuất Excel danh sách phòng (kèm ảnh QR mỗi phòng) ===
+export async function exportRoomsXlsx(rooms) {
+  // rooms: [{ room_code, type, members:[{ name, class }] }]
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet('Danh sách phòng')
+
+  ws.columns = [
+    { header: 'Mã phòng', key: 'code', width: 12 },
+    { header: 'Loại', key: 'type', width: 10 },
+    { header: 'Họ tên', key: 'names', width: 28 },
+    { header: 'Lớp', key: 'classes', width: 14 },
+    { header: 'QR code', key: 'qr', width: 16 },
+  ]
+  const header = ws.getRow(1)
+  header.font = { bold: true }
+  header.alignment = { vertical: 'middle', horizontal: 'center' }
+
+  for (const r of rooms) {
+    // mỗi thành viên 1 dòng trong ô (Họ tên & Lớp khớp dòng với nhau)
+    const row = ws.addRow({
+      code: r.room_code,
+      type: r.type === 'double' ? 'Double' : 'Twin',
+      names: r.members.map((m) => m.name).join('\n'),
+      classes: r.members.map((m) => m.class || '').join('\n'),
+      qr: '',
+    })
+    row.height = 90
+    row.alignment = { vertical: 'middle', wrapText: true }
+    ws.getCell(`A${row.number}`).alignment = { vertical: 'middle', horizontal: 'center' }
+    ws.getCell(`B${row.number}`).alignment = { vertical: 'middle', horizontal: 'center' }
+
+    // ảnh QR (nội dung = mã phòng) đặt vào ô cột E
+    const dataUrl = await QRCode.toDataURL(r.room_code, { width: 200, margin: 1 })
+    const imgId = wb.addImage({ base64: dataUrl, extension: 'png' })
+    ws.addImage(imgId, {
+      tl: { col: 4.2, row: row.number - 1 + 0.1 }, // E = cột index 4, hàng 0-based
+      ext: { width: 80, height: 80 },
+    })
+  }
+
+  const buf = await wb.xlsx.writeBuffer()
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'danh-sach-phong-QR.xlsx'
+  a.click()
+  URL.revokeObjectURL(url)
 }
