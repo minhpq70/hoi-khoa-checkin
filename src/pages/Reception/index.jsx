@@ -321,12 +321,16 @@ function Dashboard() {
               return (
                 <div
                   key={p.id}
-                  onClick={occupied ? () => setSelected({ ...p, members: membersOf(p.logical_room_id) }) : undefined}
+                  onClick={() =>
+                    occupied
+                      ? setSelected({ ...p, mode: 'guests', members: membersOf(p.logical_room_id) })
+                      : setSelected({ ...p, mode: 'edit' })
+                  }
                   style={{
                     border: `1px solid ${colors.border}`,
                     borderRadius: 8,
                     padding: 10,
-                    cursor: occupied ? 'pointer' : 'default',
+                    cursor: 'pointer',
                     background: occupied ? '#f0fdf4' : '#fff',
                   }}
                 >
@@ -335,7 +339,9 @@ function Dashboard() {
                     <Badge status={p.type} />
                     <Badge status={p.status} />
                   </div>
-                  {occupied && <div style={{ fontSize: 12, color: colors.green, marginTop: 6 }}>Bấm xem khách →</div>}
+                  <div style={{ fontSize: 12, color: occupied ? colors.green : colors.gray, marginTop: 6 }}>
+                    {occupied ? 'Bấm xem khách →' : 'Bấm để sửa / xoá →'}
+                  </div>
                 </div>
               )
             })}
@@ -343,7 +349,79 @@ function Dashboard() {
         )}
       </Card>
 
-      {selected && <RoomDetailModal room={selected} onClose={() => setSelected(null)} />}
+      {selected?.mode === 'guests' && <RoomDetailModal room={selected} onClose={() => setSelected(null)} />}
+      {selected?.mode === 'edit' && <EditRoomModal room={selected} onClose={() => setSelected(null)} />}
+    </div>
+  )
+}
+
+// Sửa số phòng / loại, hoặc xoá phòng nhập nhầm (chỉ phòng chưa có khách).
+function EditRoomModal({ room, onClose }) {
+  const [roomNumber, setRoomNumber] = useState(room.room_number)
+  const [type, setType] = useState(room.type)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  async function save() {
+    if (!roomNumber.trim()) return
+    setBusy(true)
+    setErr(null)
+    const { error } = await supabase
+      .from('physical_room')
+      .update({ room_number: roomNumber.trim(), type })
+      .eq('id', room.id)
+    setBusy(false)
+    if (error) setErr(error.message.includes('duplicate') ? 'Số phòng đã tồn tại.' : error.message)
+    else onClose()
+  }
+
+  async function remove() {
+    if (!window.confirm(`Xoá phòng ${room.room_number}? Chỉ làm khi nhập nhầm.`)) return
+    setBusy(true)
+    setErr(null)
+    const { error } = await supabase.from('physical_room').delete().eq('id', room.id)
+    setBusy(false)
+    if (error) setErr(error.message)
+    else onClose()
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 }}
+    >
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 380, width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+          <h3>Sửa phòng</h3>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={{ fontSize: 22, background: 'none', border: 'none', cursor: 'pointer', color: colors.gray }}>
+            ×
+          </button>
+        </div>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <Input label="Số phòng" value={roomNumber} onChange={setRoomNumber} />
+          <div>
+            <div style={{ fontSize: 13, color: colors.gray, marginBottom: 4 }}>Loại</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {['twin', 'double'].map((t) => (
+                <Button key={t} variant={type === t ? 'primary' : 'ghost'} onClick={() => setType(t)}>
+                  {t === 'twin' ? 'Twin' : 'Double'}
+                </Button>
+              ))}
+            </div>
+          </div>
+          {err && <Alert kind="error">{err}</Alert>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <Button variant="green" disabled={busy} onClick={save}>
+              {busy ? 'Đang lưu…' : 'Lưu'}
+            </Button>
+            <div style={{ flex: 1 }} />
+            <Button variant="danger" disabled={busy} onClick={remove}>
+              🗑 Xoá phòng
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
